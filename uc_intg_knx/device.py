@@ -256,21 +256,30 @@ class KnxDevice(ExternalClientDevice):
     # ------------------------------------------------------------------
     # ExternalClientDevice abstract methods
     # ------------------------------------------------------------------
-    async def create_client(self) -> Any:
+    async def connect(self) -> bool:
+        # Rule 9: serialize the create+connect pair. The framework may call
+        # connect() twice concurrently; the lock + base early-exit prevent a
+        # duplicate xknx client. The lock lives here, NOT in create_client,
+        # because asyncio.Lock is not reentrant.
         async with self._connect_lock:
-            from xknx import XKNX
+            return await super().connect()
 
-            if self._xknx is not None:
-                await self._teardown_xknx()
+    async def create_client(self) -> Any:
+        from xknx import XKNX
 
-            self._xknx = XKNX(
-                connection_config=self._build_connection_config(),
-                device_updated_cb=self._on_device_updated,
-                connection_state_changed_cb=self._on_connection_state_changed,
-                state_updater="init 60",
-            )
-            self._build_xknx_devices()
-            return self._xknx
+        # Defensive teardown: the watchdog reconnect path calls create_client()
+        # without going through connect(), so clean up any prior client here.
+        if self._xknx is not None:
+            await self._teardown_xknx()
+
+        self._xknx = XKNX(
+            connection_config=self._build_connection_config(),
+            device_updated_cb=self._on_device_updated,
+            connection_state_changed_cb=self._on_connection_state_changed,
+            state_updater="init 60",
+        )
+        self._build_xknx_devices()
+        return self._xknx
 
     async def connect_client(self) -> None:
         await self._xknx.start()
@@ -278,8 +287,7 @@ class KnxDevice(ExternalClientDevice):
         self._loop.create_task(self._initial_sync())
 
     async def disconnect_client(self) -> None:
-        async with self._connect_lock:
-            await self._teardown_xknx()
+        await self._teardown_xknx()
         self._state = STATE_UNAVAILABLE
 
     async def _teardown_xknx(self) -> None:
@@ -355,5 +363,6 @@ class KnxDevice(ExternalClientDevice):
         await self._xknx.telegrams.put(telegram)
 
     async def disconnect(self) -> None:
-        await super().disconnect()
+        async with self._connect_lock:
+            await super().disconnect()
         self._state = STATE_UNAVAILABLE
