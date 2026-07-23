@@ -1,4 +1,4 @@
-"""KNX sensor and binary-sensor entities (read-only)."""
+"""KNX sensor and binary-sensor entities (read-only), auto-built from the import."""
 
 import logging
 
@@ -6,19 +6,25 @@ from ucapi import sensor
 from ucapi_framework import SensorEntity
 
 from uc_intg_knx.config import KnxConfig
-from uc_intg_knx.const import TYPE_BINARY_SENSOR, TYPE_SENSOR
 from uc_intg_knx.device import KnxDevice
+from uc_intg_knx.knx_import import KIND_BINARY_SENSOR, KIND_SENSOR
 
 _LOG = logging.getLogger(__name__)
 
-_DEVICE_CLASSES = {
+_DEVICE_CLASS_BY_MAIN = {
+    9: sensor.DeviceClasses.TEMPERATURE,
+    12: sensor.DeviceClasses.CUSTOM,
+    13: sensor.DeviceClasses.ENERGY,
+    14: sensor.DeviceClasses.POWER,
+}
+
+_DEVICE_CLASS_BY_VALUE_TYPE = {
     "temperature": sensor.DeviceClasses.TEMPERATURE,
     "humidity": sensor.DeviceClasses.HUMIDITY,
     "power": sensor.DeviceClasses.POWER,
-    "energy": sensor.DeviceClasses.ENERGY,
+    "active_energy": sensor.DeviceClasses.ENERGY,
     "current": sensor.DeviceClasses.CURRENT,
     "voltage": sensor.DeviceClasses.VOLTAGE,
-    "battery": sensor.DeviceClasses.BATTERY,
 }
 
 
@@ -26,29 +32,24 @@ class KnxSensor(SensorEntity):
     """Sensor backed by a KNX group address."""
 
     def __init__(
-        self,
-        device_config: KnxConfig,
-        device: KnxDevice,
-        definition: dict,
-        index: int,
-        binary: bool = False,
+        self, device_config: KnxConfig, device: KnxDevice, item: dict, binary: bool
     ) -> None:
         self._device = device
-        self._index = index
+        self._address = item["address"]
         self._binary = binary
 
         if binary:
             device_class = sensor.DeviceClasses.BINARY
         else:
-            device_class = _DEVICE_CLASSES.get(
-                str(definition.get("device_class", "")), sensor.DeviceClasses.CUSTOM
+            device_class = _DEVICE_CLASS_BY_VALUE_TYPE.get(
+                str(item.get("value_type", "")),
+                _DEVICE_CLASS_BY_MAIN.get(item.get("main"), sensor.DeviceClasses.CUSTOM),
             )
 
-        prefix = "sensor"
-        entity_id = f"{prefix}.{device_config.identifier}.{index}"
+        entity_id = f"sensor.{device_config.identifier}.{item['index']}"
         super().__init__(
             entity_id,
-            definition.get("name", f"Sensor {index}"),
+            item.get("name", self._address),
             [],
             {
                 sensor.Attributes.STATE: sensor.States.UNKNOWN,
@@ -63,14 +64,13 @@ class KnxSensor(SensorEntity):
         if not self._device.available:
             self.update({sensor.Attributes.STATE: sensor.States.UNAVAILABLE})
             return
-        xdev = self._device.xknx_device(self._index)
+        xdev = self._device.sensor_device(self._address)
         if xdev is None:
             self.update({sensor.Attributes.STATE: sensor.States.UNKNOWN})
             return
 
         if self._binary:
-            state = xdev.state
-            if state is None:
+            if xdev.state is None:
                 self.update({sensor.Attributes.STATE: sensor.States.UNKNOWN})
                 return
             self.update(
@@ -95,20 +95,12 @@ class KnxSensor(SensorEntity):
 
 
 def create_sensors(device_config: KnxConfig, device: KnxDevice) -> list[KnxSensor]:
-    """Build all value-sensor entities defined in the config."""
-    return [
-        KnxSensor(device_config, device, definition, index, binary=False)
-        for index, definition in enumerate(device_config.entities)
-        if definition.get("type") == TYPE_SENSOR
-    ]
-
-
-def create_binary_sensors(
-    device_config: KnxConfig, device: KnxDevice
-) -> list[KnxSensor]:
-    """Build all binary-sensor entities defined in the config."""
-    return [
-        KnxSensor(device_config, device, definition, index, binary=True)
-        for index, definition in enumerate(device_config.entities)
-        if definition.get("type") == TYPE_BINARY_SENSOR
-    ]
+    """Build a Sensor entity for every sensor / binary-sensor group address."""
+    entities: list[KnxSensor] = []
+    for item in device_config.entities:
+        kind = item.get("kind")
+        if kind == KIND_SENSOR:
+            entities.append(KnxSensor(device_config, device, item, binary=False))
+        elif kind == KIND_BINARY_SENSOR:
+            entities.append(KnxSensor(device_config, device, item, binary=True))
+    return entities

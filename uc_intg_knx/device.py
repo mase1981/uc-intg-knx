@@ -7,36 +7,15 @@ from typing import Any
 from ucapi_framework import ExternalClientDevice
 
 from uc_intg_knx.config import KnxConfig
-from uc_intg_knx.const import (
-    CONNECTION_ROUTING,
-    CONNECTION_TUNNELING,
-    CONNECTION_TUNNELING_TCP,
-    DEFAULT_MAX_KELVIN,
-    DEFAULT_MIN_KELVIN,
-    STATE_ON,
-    STATE_UNAVAILABLE,
-    TYPE_BINARY_SENSOR,
-    TYPE_CLIMATE,
-    TYPE_COVER,
-    TYPE_LIGHT,
-    TYPE_SENSOR,
-    TYPE_SWITCH,
-)
+from uc_intg_knx.const import STATE_ON, STATE_UNAVAILABLE
+from uc_intg_knx.knx_import import KIND_BINARY_SENSOR, KIND_SENSOR
 
 _LOG = logging.getLogger(__name__)
 
 
-def _ga(definition: dict[str, Any], *keys: str) -> str | None:
-    """Return the first non-empty group address for the given keys, else None."""
-    for key in keys:
-        value = definition.get(key)
-        if value:
-            return str(value).strip()
-    return None
-
-
 class KnxDevice(ExternalClientDevice):
-    """A single KNX/IP gateway exposing user-defined entities via xknx."""
+    """A single KNX/IP gateway. Builds xknx sensor devices from the imported
+    group addresses and sends telegrams for controls and scenes."""
 
     def __init__(self, device_config: KnxConfig, **kwargs: Any) -> None:
         super().__init__(
@@ -49,7 +28,8 @@ class KnxDevice(ExternalClientDevice):
         )
         self._device_config = device_config
         self._xknx: Any = None
-        self._xknx_devices: dict[int, Any] = {}
+        self._sensor_devices: dict[str, Any] = {}
+        self._switch_states: dict[str, bool] = {}
         self._connect_lock: asyncio.Lock = asyncio.Lock()
         self._state: str = STATE_UNAVAILABLE
 
@@ -63,7 +43,7 @@ class KnxDevice(ExternalClientDevice):
 
     @property
     def address(self) -> str:
-        return self._device_config.host or self._device_config.connection_type
+        return self._device_config.host
 
     @property
     def log_id(self) -> str:
@@ -77,13 +57,9 @@ class KnxDevice(ExternalClientDevice):
     def available(self) -> bool:
         return self.check_client_connected()
 
-    @property
-    def xknx(self) -> Any:
-        return self._xknx
-
-    def xknx_device(self, index: int) -> Any:
-        """Return the xknx device for the entity at the given config index."""
-        return self._xknx_devices.get(index)
+    def sensor_device(self, address: str) -> Any:
+        """Return the xknx sensor device for a group address, if built."""
+        return self._sensor_devices.get(address)
 
     # ------------------------------------------------------------------
     # xknx client construction
@@ -93,192 +69,79 @@ class KnxDevice(ExternalClientDevice):
 
         cfg = self._device_config
         mapping = {
-            CONNECTION_TUNNELING: ConnectionType.TUNNELING,
-            CONNECTION_TUNNELING_TCP: ConnectionType.TUNNELING_TCP,
-            CONNECTION_ROUTING: ConnectionType.ROUTING,
+            "tunneling": ConnectionType.TUNNELING,
+            "tunneling_tcp": ConnectionType.TUNNELING_TCP,
+            "routing": ConnectionType.ROUTING,
+            "automatic": ConnectionType.AUTOMATIC,
         }
-        connection_type = mapping.get(cfg.connection_type, ConnectionType.AUTOMATIC)
-
-        kwargs: dict[str, Any] = {"connection_type": connection_type}
+        kwargs: dict[str, Any] = {
+            "connection_type": mapping.get(
+                cfg.connection_type, ConnectionType.TUNNELING
+            )
+        }
         if cfg.host:
             kwargs["gateway_ip"] = cfg.host
             kwargs["gateway_port"] = cfg.port
         if cfg.local_ip:
             kwargs["local_ip"] = cfg.local_ip
-        if cfg.route_back:
-            kwargs["route_back"] = True
-        if cfg.individual_address:
-            kwargs["individual_address"] = cfg.individual_address
         return ConnectionConfig(**kwargs)
 
-    def _build_xknx_devices(self) -> None:
-        from xknx.devices import (
-            BinarySensor,
-            Climate,
-            ClimateMode,
-            Cover,
-            Light,
-            Sensor,
-            Switch,
-        )
+    def _build_sensor_devices(self) -> None:
+        from xknx.devices import BinarySensor, Sensor
 
-        self._xknx_devices = {}
-        for index, definition in enumerate(self._device_config.entities):
-            entity_type = definition.get("type")
-            name = definition.get("name", f"knx_{index}")
+        self._sensor_devices = {}
+        for item in self._device_config.entities:
+            kind = item.get("kind")
+            address = item.get("address")
+            if not address:
+                continue
             device: Any = None
             try:
-                if entity_type == TYPE_SWITCH:
-                    device = Switch(
-                        self._xknx,
-                        name,
-                        group_address=_ga(definition, "address"),
-                        group_address_state=_ga(definition, "state_address"),
-                        invert=bool(definition.get("invert", False)),
-                    )
-                elif entity_type == TYPE_LIGHT:
-                    device = Light(
-                        self._xknx,
-                        name,
-                        group_address_switch=_ga(definition, "address"),
-                        group_address_switch_state=_ga(definition, "state_address"),
-                        group_address_brightness=_ga(definition, "brightness_address"),
-                        group_address_brightness_state=_ga(
-                            definition, "brightness_state_address"
-                        ),
-                        group_address_color=_ga(definition, "color_address"),
-                        group_address_color_state=_ga(definition, "color_state_address"),
-                        group_address_hue=_ga(definition, "hue_address"),
-                        group_address_hue_state=_ga(definition, "hue_state_address"),
-                        group_address_saturation=_ga(definition, "saturation_address"),
-                        group_address_saturation_state=_ga(
-                            definition, "saturation_state_address"
-                        ),
-                        group_address_color_temperature=_ga(
-                            definition, "color_temp_address"
-                        ),
-                        group_address_color_temperature_state=_ga(
-                            definition, "color_temp_state_address"
-                        ),
-                        min_kelvin=int(
-                            definition.get("min_kelvin", DEFAULT_MIN_KELVIN)
-                        ),
-                        max_kelvin=int(
-                            definition.get("max_kelvin", DEFAULT_MAX_KELVIN)
-                        ),
-                    )
-                elif entity_type == TYPE_COVER:
-                    device = Cover(
-                        self._xknx,
-                        name,
-                        group_address_long=_ga(definition, "updown_address"),
-                        group_address_short=_ga(definition, "step_address"),
-                        group_address_stop=_ga(definition, "stop_address"),
-                        group_address_position=_ga(definition, "position_address"),
-                        group_address_position_state=_ga(
-                            definition, "position_state_address"
-                        ),
-                        group_address_angle=_ga(definition, "angle_address"),
-                        group_address_angle_state=_ga(
-                            definition, "angle_state_address"
-                        ),
-                        travel_time_down=float(definition.get("travel_time", 25)),
-                        travel_time_up=float(definition.get("travel_time", 25)),
-                        invert_updown=bool(definition.get("invert_updown", False)),
-                        invert_position=bool(definition.get("invert_position", False)),
-                        invert_angle=bool(definition.get("invert_angle", False)),
-                    )
-                elif entity_type == TYPE_CLIMATE:
-                    mode = None
-                    controller_mode = _ga(definition, "controller_mode_address")
-                    operation_mode = _ga(definition, "operation_mode_address")
-                    if controller_mode or operation_mode:
-                        mode = ClimateMode(
-                            self._xknx,
-                            f"{name} Mode",
-                            group_address_controller_mode=controller_mode,
-                            group_address_controller_mode_state=_ga(
-                                definition, "controller_mode_state_address"
-                            ),
-                            group_address_operation_mode=operation_mode,
-                            group_address_operation_mode_state=_ga(
-                                definition, "operation_mode_state_address"
-                            ),
-                        )
-                        self._xknx.devices.async_add(mode)
-                    device = Climate(
-                        self._xknx,
-                        name,
-                        group_address_temperature=_ga(definition, "temperature_address"),
-                        group_address_target_temperature=_ga(
-                            definition, "target_temperature_address"
-                        ),
-                        group_address_target_temperature_state=_ga(
-                            definition, "target_temperature_state_address"
-                        ),
-                        group_address_on_off=_ga(definition, "on_off_address"),
-                        group_address_on_off_state=_ga(
-                            definition, "on_off_state_address"
-                        ),
-                        min_temp=definition.get("min_temp"),
-                        max_temp=definition.get("max_temp"),
-                        temperature_step=float(definition.get("temperature_step", 0.5)),
-                        mode=mode,
-                    )
-                elif entity_type == TYPE_SENSOR:
+                if kind == KIND_SENSOR:
                     device = Sensor(
                         self._xknx,
-                        name,
-                        group_address_state=_ga(definition, "state_address", "address"),
-                        value_type=definition.get("value_type", "temperature"),
+                        item.get("name", address),
+                        group_address_state=address,
+                        value_type=item.get("value_type") or None,
                     )
-                elif entity_type == TYPE_BINARY_SENSOR:
+                elif kind == KIND_BINARY_SENSOR:
                     device = BinarySensor(
                         self._xknx,
-                        name,
-                        group_address_state=_ga(definition, "state_address", "address"),
-                        invert=bool(definition.get("invert", False)),
+                        item.get("name", address),
+                        group_address_state=address,
                     )
             except Exception as err:  # pylint: disable=broad-exception-caught
-                _LOG.error(
-                    "[%s] Failed to build xknx device for '%s' (%s): %s",
+                _LOG.warning(
+                    "[%s] Could not build sensor for %s (%s): %s",
                     self.log_id,
-                    name,
-                    entity_type,
+                    address,
+                    item.get("value_type"),
                     err,
                 )
                 device = None
-
             if device is not None:
                 self._xknx.devices.async_add(device)
-            self._xknx_devices[index] = device
+                self._sensor_devices[address] = device
 
     # ------------------------------------------------------------------
-    # ExternalClientDevice abstract methods
+    # ExternalClientDevice abstract methods (rule 9: lock at connect level)
     # ------------------------------------------------------------------
     async def connect(self) -> bool:
-        # Rule 9: serialize the create+connect pair. The framework may call
-        # connect() twice concurrently; the lock + base early-exit prevent a
-        # duplicate xknx client. The lock lives here, NOT in create_client,
-        # because asyncio.Lock is not reentrant.
         async with self._connect_lock:
             return await super().connect()
 
     async def create_client(self) -> Any:
         from xknx import XKNX
 
-        # Defensive teardown: the watchdog reconnect path calls create_client()
-        # without going through connect(), so clean up any prior client here.
         if self._xknx is not None:
             await self._teardown_xknx()
-
         self._xknx = XKNX(
             connection_config=self._build_connection_config(),
             device_updated_cb=self._on_device_updated,
             connection_state_changed_cb=self._on_connection_state_changed,
             state_updater="init 60",
         )
-        self._build_xknx_devices()
+        self._build_sensor_devices()
         return self._xknx
 
     async def connect_client(self) -> None:
@@ -297,16 +160,19 @@ class KnxDevice(ExternalClientDevice):
             except Exception as err:  # pylint: disable=broad-exception-caught
                 _LOG.debug("[%s] Error stopping xknx: %s", self.log_id, err)
             self._xknx = None
-        self._xknx_devices = {}
+        self._sensor_devices = {}
 
     def check_client_connected(self) -> bool:
         if self._xknx is None:
             return False
         from xknx.core.connection_state import XknxConnectionState
 
-        return (
-            self._xknx.connection_manager.state == XknxConnectionState.CONNECTED
-        )
+        return self._xknx.connection_manager.state == XknxConnectionState.CONNECTED
+
+    async def disconnect(self) -> None:
+        async with self._connect_lock:
+            await super().disconnect()
+        self._state = STATE_UNAVAILABLE
 
     # ------------------------------------------------------------------
     # xknx callbacks (synchronous in xknx 3.x)
@@ -317,10 +183,9 @@ class KnxDevice(ExternalClientDevice):
     def _on_connection_state_changed(self, state: Any) -> None:
         from xknx.core.connection_state import XknxConnectionState
 
-        if state == XknxConnectionState.CONNECTED:
-            self._state = STATE_ON
-        else:
-            self._state = STATE_UNAVAILABLE
+        self._state = (
+            STATE_ON if state == XknxConnectionState.CONNECTED else STATE_UNAVAILABLE
+        )
         self.push_update()
 
     async def _initial_sync(self) -> None:
@@ -330,7 +195,7 @@ class KnxDevice(ExternalClientDevice):
             _LOG.debug("[%s] Initial state sync failed: %s", self.log_id, err)
 
     # ------------------------------------------------------------------
-    # Raw telegram sending (used by button entities)
+    # Telegram sending (used by the Remote and Select entities)
     # ------------------------------------------------------------------
     async def send_group_value(
         self,
@@ -338,7 +203,7 @@ class KnxDevice(ExternalClientDevice):
         value_type: str | None = None,
         value: Any = None,
     ) -> None:
-        """Write a value to an arbitrary group address."""
+        """Write a value to a group address."""
         from xknx.dpt import DPTBase, DPTBinary
         from xknx.telegram import Telegram
         from xknx.telegram.address import GroupAddress
@@ -355,14 +220,13 @@ class KnxDevice(ExternalClientDevice):
         else:
             bit = 0 if value in (0, False, "0", "off", "OFF") else 1
             payload = GroupValueWrite(DPTBinary(bit))
+            self._switch_states[address] = bool(bit)
 
-        telegram = Telegram(
-            destination_address=GroupAddress(address),
-            payload=payload,
+        await self._xknx.telegrams.put(
+            Telegram(destination_address=GroupAddress(address), payload=payload)
         )
-        await self._xknx.telegrams.put(telegram)
 
-    async def disconnect(self) -> None:
-        async with self._connect_lock:
-            await super().disconnect()
-        self._state = STATE_UNAVAILABLE
+    async def switch_toggle(self, address: str) -> None:
+        """Toggle a boolean control, tracking last-known state locally."""
+        current = self._switch_states.get(address, False)
+        await self.send_group_value(address, None, 0 if current else 1)

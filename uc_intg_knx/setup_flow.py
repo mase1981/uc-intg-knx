@@ -1,6 +1,10 @@
-"""Setup flow for the KNX Hub integration."""
+"""Setup flow for the KNX integration.
 
-import json
+Two inputs, one screen: the KNX/IP gateway IP address, and the ETS
+'Group Addresses' export pasted as text. The integration parses the export and
+auto-builds all entities.
+"""
+
 import logging
 from typing import Any
 
@@ -8,85 +12,52 @@ from ucapi import RequestUserInput
 from ucapi_framework import BaseSetupFlow
 
 from uc_intg_knx.config import KnxConfig
-from uc_intg_knx.const import (
-    CONNECTION_TYPES,
-    DEFAULT_KNX_PORT,
-    ENTITY_TYPES,
-    slugify,
-)
+from uc_intg_knx.const import DEFAULT_KNX_PORT
+from uc_intg_knx.knx_import import items_to_dicts, parse_group_export, summarize
 
 _LOG = logging.getLogger(__name__)
 
-_EXAMPLE_ENTITIES = (
-    '[{"type":"switch","name":"Office Light","address":"1/1/1",'
-    '"state_address":"1/1/2"}]'
-)
-
 
 class KnxSetupFlow(BaseSetupFlow[KnxConfig]):
-    """Collect gateway connection details and the entity definitions."""
+    """Collect the gateway IP and the pasted ETS group-address export."""
 
     def get_manual_entry_form(self) -> RequestUserInput:
         return RequestUserInput(
-            {"en": "KNX/IP Gateway Setup"},
+            {"en": "KNX Gateway Setup"},
             [
                 {
-                    "id": "name",
-                    "label": {"en": "Gateway Name"},
-                    "field": {"text": {"value": "KNX Hub"}},
-                },
-                {
-                    "id": "connection_type",
-                    "label": {"en": "Connection Type"},
+                    "id": "info",
+                    "label": {"en": "KNX/IP Gateway"},
                     "field": {
-                        "dropdown": {
-                            "value": "automatic",
-                            "items": [
-                                {"id": "automatic", "label": {"en": "Automatic (discover gateway)"}},
-                                {"id": "tunneling", "label": {"en": "Tunneling (UDP)"}},
-                                {"id": "tunneling_tcp", "label": {"en": "Tunneling (TCP)"}},
-                                {"id": "routing", "label": {"en": "Routing (multicast)"}},
-                            ],
+                        "label": {
+                            "value": {
+                                "en": "Enter your KNX/IP gateway (interface or router) IP "
+                                "address, then paste your ETS 'Group Addresses' export "
+                                "(CSV) below. The integration builds all entities "
+                                "automatically."
+                            }
                         }
                     },
                 },
                 {
+                    "id": "name",
+                    "label": {"en": "Name"},
+                    "field": {"text": {"value": "KNX"}},
+                },
+                {
                     "id": "host",
-                    "label": {"en": "Gateway IP (blank for automatic/routing)"},
+                    "label": {"en": "Gateway IP address"},
                     "field": {"text": {"value": ""}},
                 },
                 {
                     "id": "port",
-                    "label": {"en": "Gateway Port"},
+                    "label": {"en": "Gateway port"},
                     "field": {"number": {"value": DEFAULT_KNX_PORT, "min": 1, "max": 65535}},
                 },
                 {
-                    "id": "local_ip",
-                    "label": {"en": "Local IP (optional)"},
-                    "field": {"text": {"value": ""}},
-                },
-                {
-                    "id": "route_back",
-                    "label": {"en": "Route Back (for NAT/VPN tunnels)"},
-                    "field": {
-                        "dropdown": {
-                            "value": "false",
-                            "items": [
-                                {"id": "false", "label": {"en": "No"}},
-                                {"id": "true", "label": {"en": "Yes"}},
-                            ],
-                        }
-                    },
-                },
-                {
-                    "id": "individual_address",
-                    "label": {"en": "Individual Address (routing only, e.g. 1.0.255)"},
-                    "field": {"text": {"value": ""}},
-                },
-                {
-                    "id": "entities",
-                    "label": {"en": "Entities (JSON array — see the README)"},
-                    "field": {"text": {"value": _EXAMPLE_ENTITIES}},
+                    "id": "import_data",
+                    "label": {"en": "ETS Group Address export (paste CSV)"},
+                    "field": {"textarea": {"value": ""}},
                 },
             ],
         )
@@ -94,65 +65,37 @@ class KnxSetupFlow(BaseSetupFlow[KnxConfig]):
     async def query_device(
         self, input_values: dict[str, Any]
     ) -> KnxConfig | RequestUserInput:
-        connection_type = input_values.get("connection_type", "automatic").strip()
-        if connection_type not in CONNECTION_TYPES:
-            raise ValueError(f"Invalid connection type: {connection_type}")
-
         host = input_values.get("host", "").strip()
-        if connection_type in ("tunneling", "tunneling_tcp") and not host:
-            raise ValueError("Gateway IP is required for tunneling connections")
+        if not host:
+            raise ValueError("Gateway IP address is required")
 
-        entities = self._parse_entities(input_values.get("entities", ""))
-
-        name = input_values.get("name", "").strip() or "KNX Hub"
-        identifier = f"knx_{slugify(host or name)}"
+        items = parse_group_export(input_values.get("import_data", ""))
+        if not items:
+            raise ValueError(
+                "No group addresses found. Paste the ETS 'Group Addresses' CSV export."
+            )
 
         try:
             port = int(input_values.get("port", DEFAULT_KNX_PORT))
         except (TypeError, ValueError):
             port = DEFAULT_KNX_PORT
 
-        config = KnxConfig(
+        name = input_values.get("name", "").strip() or "KNX"
+        identifier = f"knx_{host.replace('.', '_')}"
+
+        _LOG.info(
+            "KNX gateway '%s' (%s): imported %d group addresses %s",
+            name,
+            host,
+            len(items),
+            summarize(items),
+        )
+
+        return KnxConfig(
             identifier=identifier,
             name=name,
-            connection_type=connection_type,
             host=host,
             port=port,
-            local_ip=input_values.get("local_ip", "").strip(),
-            route_back=str(input_values.get("route_back", "false")).lower() == "true",
-            individual_address=input_values.get("individual_address", "").strip(),
-            entities=entities,
+            connection_type="tunneling",
+            entities=items_to_dicts(items),
         )
-        _LOG.info(
-            "KNX gateway '%s' configured (%s) with %d entities",
-            name,
-            connection_type,
-            len(entities),
-        )
-        return config
-
-    def _parse_entities(self, raw: str) -> list[dict[str, Any]]:
-        raw = (raw or "").strip()
-        if not raw:
-            return []
-        try:
-            parsed = json.loads(raw)
-        except json.JSONDecodeError as err:
-            raise ValueError(f"Entities field is not valid JSON: {err}") from err
-        if isinstance(parsed, dict):
-            parsed = [parsed]
-        if not isinstance(parsed, list):
-            raise ValueError("Entities must be a JSON array of objects")
-
-        for i, item in enumerate(parsed):
-            if not isinstance(item, dict):
-                raise ValueError(f"Entity #{i + 1} is not a JSON object")
-            entity_type = item.get("type")
-            if entity_type not in ENTITY_TYPES:
-                raise ValueError(
-                    f"Entity #{i + 1} has invalid type '{entity_type}'. "
-                    f"Valid types: {', '.join(ENTITY_TYPES)}"
-                )
-            if not item.get("name"):
-                raise ValueError(f"Entity #{i + 1} ({entity_type}) is missing 'name'")
-        return parsed

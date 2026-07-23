@@ -3,11 +3,11 @@
   "version": "1.0.0",
   "min_core_api": "0.22.0",
   "name": {
-    "en": "KNX Hub"
+    "en": "KNX"
   },
   "icon": "uc:home",
   "description": {
-    "en": "Control a KNX smart-home installation through a KNX/IP gateway. Exposes user-defined switches, lights, covers, climate, sensors, and scene buttons."
+    "en": "Control a KNX installation through a KNX/IP gateway. Enter the gateway IP and paste your ETS group-address export; the integration auto-builds a Remote, scene Selects, and Sensors."
   },
   "developer": {
     "name": "Meir Miyara",
@@ -18,7 +18,7 @@
   "release_date": "2026-07-23",
   "setup_data_schema": {
     "title": {
-      "en": "KNX Hub Setup"
+      "en": "KNX Setup"
     },
     "settings": [
       {
@@ -29,7 +29,7 @@
         "field": {
           "label": {
             "value": {
-              "en": "On the next screen, choose your connection type and enter your KNX/IP gateway details, then paste your entity definitions as a JSON array. See the integration README for the entity format and examples."
+              "en": "On the next screen, enter your KNX/IP gateway IP address and paste your ETS 'Group Addresses' CSV export. The integration builds all entities automatically."
             }
           }
         }

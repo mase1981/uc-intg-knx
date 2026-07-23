@@ -36,7 +36,7 @@ async def main() -> None:
     logging.getLogger("xknx.knx").setLevel(logging.WARNING)
 
     _LOG = logging.getLogger(__name__)
-    _LOG.info("Starting KNX Hub integration v%s", __version__)
+    _LOG.info("Starting KNX integration v%s", __version__)
 
     driver = KnxDriver()
     config_path = get_config_path(driver.api.config_dir_path or "")
@@ -57,7 +57,7 @@ async def main() -> None:
     await driver.api.set_device_state(
         DeviceStates.CONNECTED if device_count > 0 else DeviceStates.DISCONNECTED
     )
-    _LOG.info("KNX Hub started - %d gateway(s) configured", device_count)
+    _LOG.info("KNX integration started - %d gateway(s) configured", device_count)
     await asyncio.Future()
 
 

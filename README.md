@@ -1,46 +1,52 @@
-# KNX Hub — Unfolded Circle Integration
+# KNX Integration for Unfolded Circle Remote 2/3
 
-Control a [KNX](https://www.knx.org/) smart-home installation from your Unfolded
-Circle Remote Two/3 through any KNX/IP gateway (router or interface). The
-integration talks native KNXnet/IP using the [xknx](https://xknx.io/) library —
-the same engine that powers Home Assistant's KNX component — and exposes your
-devices to the Remote as switches, lights, covers, climate, sensors, and scene
-buttons.
+Control your **KNX** smart-home installation directly from your Unfolded Circle Remote 2 or Remote 3 through any **KNX/IP gateway** (interface or router). Enter your gateway's IP address, paste your ETS group-address export, and the integration **auto-builds all your entities** — a Remote for switches/lights/blinds, Selects for scenes, and Sensors for feedback.
 
-Because KNX has no concept of auto-discoverable "devices" (functions are defined
-by group addresses in your ETS project), you describe the entities you want as a
-small JSON list during setup. See [Entity Definitions](#entity-definitions).
+![KNX](https://img.shields.io/badge/KNX-Smart%20Home-blue)
+[![GitHub Release](https://img.shields.io/github/v/release/mase1981/uc-intg-knx?style=flat-square)](https://github.com/mase1981/uc-intg-knx/releases)
+![License](https://img.shields.io/badge/license-MPL--2.0-blue?style=flat-square)
+[![GitHub issues](https://img.shields.io/github/issues/mase1981/uc-intg-knx?style=flat-square)](https://github.com/mase1981/uc-intg-knx/issues)
+[![Community Forum](https://img.shields.io/badge/community-forum-blue?style=flat-square)](https://unfolded.community/)
+[![Buy Me A Coffee](https://img.shields.io/badge/buy%20me%20a%20coffee-donate-yellow.svg?style=flat-square)](https://buymeacoffee.com/meirmiyara)
+[![PayPal](https://img.shields.io/badge/PayPal-donate-blue.svg?style=flat-square)](https://paypal.me/mmiyara)
 
 ## Features
 
-- **Connection types**: Automatic gateway discovery, Tunneling (UDP), Tunneling
-  (TCP), and Routing (multicast).
-- **Entity types**: `switch`, `light` (on/off, dimming, color, color temperature),
-  `cover` (position + tilt), `climate` (thermostat), `sensor`, `binary_sensor`,
-  and `button` (scene / group-address trigger).
-- **Real-time updates**: State changes on the KNX bus are pushed to the Remote
-  instantly via telegram callbacks — no polling lag.
-- **Reboot & standby survival**: Configuration and entities are restored
-  automatically after a Remote reboot or resume from standby.
+Because a KNX/IP gateway is a bridge to the bus and does not store your device list, the integration reads that information from the **ETS group-address export** you paste during setup. From it, it automatically creates the right Unfolded Circle entities:
+
+- **🎛️ Remote** — every switch, dimmable light, and blind/shutter becomes a command on a single Remote entity, with generated on-screen pages. Use it directly or drop the commands into your Activities.
+- **🎬 Scene Select** — all your KNX scenes in one Select entity; pick a scene to recall it.
+- **🌡️ Sensors** — temperatures, humidity, power, status/feedback, contacts and more, each typed automatically from its KNX datapoint type (DPT).
+- **⚡ Real-time updates** — status changes on the KNX bus are pushed to the Remote instantly via telegram callbacks, no polling lag.
+- **🔌 Zero maintenance** — configuration and entities survive Remote reboots and standby automatically.
+
+---
+## ❤️ Support Development ❤️
+
+If you find this integration useful, consider supporting development:
+
+[![GitHub Sponsors](https://img.shields.io/badge/Sponsor-GitHub-pink?style=for-the-badge&logo=github)](https://github.com/sponsors/mase1981)
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://www.buymeacoffee.com/meirmiyara)
+[![PayPal](https://img.shields.io/badge/PayPal-00457C?style=for-the-badge&logo=paypal&logoColor=white)](https://paypal.me/mmiyara)
+
+Your support helps maintain this integration. Thank you! ❤️
+---
 
 ## Requirements
 
-- A KNX/IP gateway (interface or router) reachable on your network.
-- The group addresses for the functions you want to control (from your ETS
-  project or KNX documentation).
-- Unfolded Circle Remote Two/3 with firmware supporting custom integrations.
+- A **KNX/IP gateway** (interface or router — e.g. MDT, Weinzierl, Gira, ISE, Siemens) reachable on your network, with **tunneling** enabled.
+- Your **ETS project's group addresses**, exported as CSV (below). No ETS software is needed on the Remote — you only export once.
+- Unfolded Circle Remote 2 / 3 with firmware supporting custom integrations.
 
 ## Installation
 
-### Remote (recommended)
+### Option 1: Remote Web Interface (Recommended)
 
-1. Download the latest `uc-intg-knx-*.tar.gz` from the
-   [Releases](https://github.com/mase1981/uc-intg-knx/releases) page.
-2. In the Remote web configurator, go to **Integrations → Add → Install Custom**
-   and upload the archive.
-3. Start the setup and follow [Configuration](#configuration).
+1. Download the latest `uc-intg-knx-<version>.tar.gz` from the [**Releases**](https://github.com/mase1981/uc-intg-knx/releases) page.
+2. Open your Remote's web interface (`http://your-remote-ip`).
+3. Go to **Settings → Integrations → Add Integration → Install Custom** and upload the `.tar.gz`.
 
-### Docker
+### Option 2: Docker (Advanced)
 
 ```bash
 docker run -d --name uc-intg-knx --network host \
@@ -49,177 +55,74 @@ docker run -d --name uc-intg-knx --network host \
   ghcr.io/mase1981/uc-intg-knx:latest
 ```
 
-`--network host` is required so the container can send/receive KNX multicast and
-reach the gateway.
+`--network host` is required so the container can reach your KNX/IP gateway.
 
 ## Configuration
 
-On the setup screen you provide:
+Setup is a **single screen** with two things to fill in:
 
-| Field | Description |
-|-------|-------------|
-| **Gateway Name** | A friendly name for this KNX hub. |
-| **Connection Type** | `automatic`, `tunneling`, `tunneling_tcp`, or `routing`. |
-| **Gateway IP** | The gateway's IP. Required for tunneling; leave blank for automatic/routing. |
-| **Gateway Port** | KNXnet/IP port (default `3671`). |
-| **Local IP** | Optional — the local interface to bind. Useful with multiple NICs/VPN. |
-| **Route Back** | Set to *Yes* only for NAT/VPN tunneling scenarios. |
-| **Individual Address** | Routing only — the integration's own bus address (e.g. `1.0.255`). |
-| **Entities** | A JSON array describing the entities to expose (below). |
+| Field | What to enter |
+|-------|---------------|
+| **Gateway IP address** | The IP of your KNX/IP gateway (e.g. `192.168.1.10`). |
+| **ETS Group Address export** | Paste your ETS group-address CSV (see below). |
 
-## Entity Definitions
+That's it — press **Complete** and the integration connects and builds your entities.
 
-The **Entities** field takes a JSON array. Each element is an object with a
-`type`, a `name`, and the group addresses for that function. Group addresses use
-the standard 3-level notation (`main/middle/sub`, e.g. `1/2/3`).
+### How to export your group addresses from ETS
 
-`*_state` / `*_state_address` fields are the **status** group addresses the KNX
-device sends its current value on. Provide them wherever available so the Remote
-reflects real state; without them the integration still sends commands but can't
-show live status.
+1. In **ETS**, open your project and go to the **Group Addresses** view.
+2. Right-click the top **Group Addresses** node → **Export Group Addresses…**
+3. Choose **CSV** as the format. For best results, keep the **3-level** address style and include the **Datapoint Type (DPT)** column (this lets the integration type your sensors correctly).
+4. Open the exported `.csv` in a text editor, **select all**, copy, and **paste it** into the *ETS Group Address export* field during setup.
 
-### switch
+> **Tip:** The integration is tolerant of ETS's CSV/TSV variations and DPT formats (`1.001`, `DPST-1-1`, `DPT-9`). If the export has no DPT column, entities are still created using name heuristics — but including the DPT column gives the most accurate results.
 
-```json
-{ "type": "switch", "name": "Office Lamp", "address": "1/1/1", "state_address": "1/1/2" }
-```
+### What gets created
 
-| Field | Required | Notes |
-|-------|----------|-------|
-| `address` | yes | On/off write GA (DPT 1). |
-| `state_address` | no | Status GA. |
-| `invert` | no | `true` to invert on/off. |
+| KNX datapoint (DPT) | Becomes |
+|---------------------|---------|
+| Switching (1.001), controls | A command on the **Remote** (On / Off / Toggle) |
+| Dimming value (5.x) | Remote brightness commands (Off / 25 / 50 / 75 / 100 %) |
+| Up/Down, blinds (1.008, 3.x) | Remote **Open / Close / Stop** commands |
+| Status / feedback (1.001 named "…status") | A **binary Sensor** |
+| Measurements (9.x, 12–14, 7.x…) | A **Sensor**, typed and with units |
+| Scene (17.x / 18.x) | An option in the **Scenes** Select |
 
-### light
+Controls are aggregated into **one Remote** entity (so a dimmable light appears as its set of commands rather than a separate Light entity). Each command is labeled from your ETS names, so `Kitchen Light Switch` → `KITCHEN_LIGHT_SWITCH_ON` / `_OFF` / `_TOGGLE`.
 
-```json
-{
-  "type": "light", "name": "Kitchen Ceiling",
-  "address": "1/2/1", "state_address": "1/2/2",
-  "brightness_address": "1/2/3", "brightness_state_address": "1/2/4",
-  "color_temp_address": "1/2/5", "color_temp_state_address": "1/2/6",
-  "min_kelvin": 2700, "max_kelvin": 6500
-}
-```
+## Using the Integration
 
-| Field | Notes |
-|-------|-------|
-| `address` / `state_address` | On/off switch GA (+ status). |
-| `brightness_address` / `brightness_state_address` | Dimming (DPT 5, 0–255). Enables dimming. |
-| `color_temp_address` / `color_temp_state_address` | Color temperature in Kelvin. |
-| `hue_address` / `saturation_address` (+ `*_state_address`) | HS color. |
-| `color_address` / `color_state_address` | RGB color (DPT 232.600). |
-| `min_kelvin` / `max_kelvin` | Kelvin range for color-temperature mapping (default 2700–6500). |
-
-### cover
-
-```json
-{
-  "type": "cover", "name": "Living Blinds", "device_class": "blind",
-  "updown_address": "2/1/1", "stop_address": "2/1/2", "step_address": "2/1/3",
-  "position_address": "2/1/4", "position_state_address": "2/1/5",
-  "angle_address": "2/1/6", "angle_state_address": "2/1/7"
-}
-```
-
-| Field | Notes |
-|-------|-------|
-| `updown_address` | Long move up/down (DPT 1). |
-| `stop_address` | Stop GA. |
-| `step_address` | Short step (slat tilt) GA. |
-| `position_address` / `position_state_address` | Absolute position (DPT 5, 0–100). |
-| `angle_address` / `angle_state_address` | Slat angle/tilt. |
-| `device_class` | `blind`, `curtain`, `garage`, `shade`, `door`, `gate`, `window`. |
-| `travel_time` | Seconds of travel for position estimation (default 25). |
-| `invert_updown` / `invert_position` / `invert_angle` | Optional inversions. |
-
-### climate
-
-```json
-{
-  "type": "climate", "name": "Living Thermostat",
-  "temperature_address": "3/1/1",
-  "target_temperature_address": "3/1/2", "target_temperature_state_address": "3/1/3",
-  "on_off_address": "3/1/4", "on_off_state_address": "3/1/5",
-  "controller_mode_address": "3/1/6", "controller_mode_state_address": "3/1/7",
-  "min_temp": 7, "max_temp": 35, "temperature_step": 0.5
-}
-```
-
-| Field | Notes |
-|-------|-------|
-| `temperature_address` | Current temperature (read). |
-| `target_temperature_address` (+ `*_state_address`) | Setpoint. |
-| `on_off_address` (+ `*_state_address`) | On/off control. |
-| `controller_mode_address` (+ `*_state_address`) | HVAC controller mode (DPT 20.105) — enables Heat/Cool. |
-| `operation_mode_address` (+ `*_state_address`) | Operation mode (comfort/standby/…). |
-| `min_temp` / `max_temp` / `temperature_step` | Setpoint limits and step. |
-
-### sensor
-
-```json
-{ "type": "sensor", "name": "Living Temp", "state_address": "4/1/1", "value_type": "temperature", "device_class": "temperature" }
-```
-
-| Field | Notes |
-|-------|-------|
-| `state_address` | Status GA to read. |
-| `value_type` | xknx DPT name, e.g. `temperature`, `humidity`, `illuminance`, `power`, `percent`, `voltage`, `current`, `energy`. |
-| `device_class` | Optional Remote sensor class: `temperature`, `humidity`, `power`, `energy`, `current`, `voltage`, `battery`. |
-
-### binary_sensor
-
-```json
-{ "type": "binary_sensor", "name": "Front Door", "state_address": "4/2/1", "invert": false }
-```
-
-### button
-
-Writes a value to a group address on press — ideal for scenes or triggers.
-
-```json
-{ "type": "button", "name": "Movie Scene", "address": "5/1/1", "value_type": "scene_number", "value": 5 }
-```
-
-| Field | Notes |
-|-------|-------|
-| `address` | GA to write. |
-| `value_type` | Optional DPT name. Omit to send a simple on-bit (DPT 1). |
-| `value` | Value to send (default `1`). For scenes use `value_type: "scene_number"`. |
-
-### Full example
-
-```json
-[
-  {"type":"light","name":"Kitchen","address":"1/2/1","state_address":"1/2/2","brightness_address":"1/2/3","brightness_state_address":"1/2/4"},
-  {"type":"switch","name":"Fan","address":"1/1/1","state_address":"1/1/2"},
-  {"type":"cover","name":"Blinds","updown_address":"2/1/1","stop_address":"2/1/2","position_address":"2/1/4","position_state_address":"2/1/5"},
-  {"type":"climate","name":"Thermostat","temperature_address":"3/1/1","target_temperature_address":"3/1/2","target_temperature_state_address":"3/1/3","on_off_address":"3/1/4","on_off_state_address":"3/1/5"},
-  {"type":"sensor","name":"Outdoor Temp","state_address":"4/1/1","value_type":"temperature","device_class":"temperature"},
-  {"type":"binary_sensor","name":"Front Door","state_address":"4/2/1"},
-  {"type":"button","name":"Movie Scene","address":"5/1/1","value_type":"scene_number","value":5}
-]
-```
+- **Remote entity** — add it to an Activity or open it directly. Its on-screen pages and command list are generated from your import; use the commands (e.g. `LIVING_BLIND_UPDOWN_OPEN`) in Activity sequences and macros.
+- **Scenes Select** — expose it on a page or Activity to recall any KNX scene.
+- **Sensors** — surface temperatures, humidity, power and contact/status feedback on your dashboards.
 
 ## Troubleshooting
 
-- **No state shown** — provide the `*_state_address` group addresses; without them
-  the integration can command devices but cannot read their status.
-- **Cannot connect (tunneling)** — verify the Gateway IP/port and that the gateway
-  has a free tunneling channel. Try `automatic` to confirm discovery works.
-- **Routing not working** — ensure `--network host` (Docker) and that multicast
-  `224.0.23.12:3671` is allowed on your network.
+| Symptom | Fix |
+|---------|-----|
+| "No group addresses found" | Make sure you pasted the **CSV** export (with the group `Address` column), not an empty selection. |
+| Sensors show odd values | Re-export from ETS **with the DPT column** so the integration can decode each value correctly. |
+| Cannot connect | Verify the gateway IP and that it has a free **tunneling** channel; the Remote/host must be on the same network. |
+| A control didn't appear | Only switching/dimming/blind datapoints become controls. Read-only measurement addresses become Sensors instead. |
 
-## Support
+## Credits
 
-If this integration is useful to you, consider supporting development:
+- **Developer**: Meir Miyara
+- **KNX / xknx**: Built on the [xknx](https://github.com/XKNX/xknx) library (the same engine used by Home Assistant's KNX integration).
+- **Unfolded Circle**: Remote 2/3 integration framework ([ucapi](https://github.com/unfoldedcircle/integration-python-library) / [ucapi-framework](https://github.com/JackJPowell/ucapi-framework)).
 
-- [Buy Me a Coffee](https://buymeacoffee.com/meirmiyara)
-- [PayPal](https://paypal.me/mmiyara)
+## License
 
-## Acknowledgements
+This project is licensed under the Mozilla Public License 2.0 (MPL-2.0) — see the LICENSE file for details.
 
-Built on [xknx](https://github.com/XKNX/xknx) and the
-[ucapi-framework](https://github.com/JackJPowell/ucapi-framework).
+## Support & Community
 
-**Author**: Meir Miyara
+- **GitHub Issues**: [Report bugs and request features](https://github.com/mase1981/uc-intg-knx/issues)
+- **UC Community Forum**: [General discussion and support](https://unfolded.community/)
+- **Developer**: [Meir Miyara](https://www.linkedin.com/in/meirmiyara)
+
+---
+
+**Made with ❤️ for the Unfolded Circle Community**
+
+**Thank You**: Meir Miyara
