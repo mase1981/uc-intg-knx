@@ -76,3 +76,6 @@ tools/
 .claude/
 knowledge-base/
 *.knowledge.md
+
+# Local KNX test fixtures (never commit)
+.knxtest/

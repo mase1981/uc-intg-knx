@@ -1,28 +1,31 @@
 # KNX Integration for Unfolded Circle Remote 2/3
 
-Control your **KNX** smart‑home installation directly from your Unfolded Circle Remote 2 or Remote 3 through any **KNX/IP gateway** (interface or router). Enter your gateway's IP, import your entities once, and the integration **auto‑builds native entities** — real **lights** (with dimming/colour), **switches**, **covers**, **climate** thermostats, **sensors**, and a **scenes** selector.
+Control your **KNX** smart-home installation directly from your Unfolded Circle Remote 2 or Remote 3 through any **KNX/IP gateway** (interface or router). Enter your gateway's IP, import your entities once, and the integration **auto-builds native entities** - real **lights** (with dimming/colour), **switches**, **covers**, **climate** thermostats, **sensors**, and a **scenes** selector.
 
 ![KNX](https://img.shields.io/badge/KNX-Smart%20Home-blue)
 [![GitHub Release](https://img.shields.io/github/v/release/mase1981/uc-intg-knx?style=flat-square)](https://github.com/mase1981/uc-intg-knx/releases)
 ![License](https://img.shields.io/badge/license-MPL--2.0-blue?style=flat-square)
 [![GitHub issues](https://img.shields.io/github/issues/mase1981/uc-intg-knx?style=flat-square)](https://github.com/mase1981/uc-intg-knx/issues)
 [![Community Forum](https://img.shields.io/badge/community-forum-blue?style=flat-square)](https://unfolded.community/)
+[![Discord](https://badgen.net/discord/online-members/zGVYf58)](https://discord.gg/zGVYf58)
+![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/mase1981/uc-intg-knx/total?style=flat-square)
 [![Buy Me A Coffee](https://img.shields.io/badge/buy%20me%20a%20coffee-donate-yellow.svg?style=flat-square)](https://buymeacoffee.com/meirmiyara)
 [![PayPal](https://img.shields.io/badge/PayPal-donate-blue.svg?style=flat-square)](https://paypal.me/mmiyara)
+[![Github Sponsors](https://img.shields.io/badge/GitHub%20Sponsors-30363D?&logo=GitHub-Sponsors&logoColor=EA4AAA&style=flat-square)](https://github.com/sponsors/mase1981)
 
 ## Features
 
-A KNX/IP gateway is a bridge to the bus — it doesn't store your device list. That information lives in your **ETS project**, so you import it once (three easy ways, below) and the integration turns it into proper Unfolded Circle entities:
+A KNX/IP gateway is a bridge to the bus - it doesn't store your device list. That information lives in your **ETS project**, so you import it once (three easy ways, below) and the integration turns it into proper Unfolded Circle entities:
 
-- **💡 Lights** — on/off, dimming, colour and colour‑temperature (as defined in your project).
-- **🔌 Switches** — lights, sockets, and any on/off actuator.
-- **🪟 Covers** — blinds/shutters with open/close/stop and position/tilt.
-- **🌡️ Climate** — KNX room thermostats (current + target temperature, on/off, heat/cool).
-- **📊 Sensors** — temperature, humidity, power, energy, contacts/status — typed from the KNX datapoint type (DPT).
-- **🎬 Scenes** — all your KNX scenes in one Select entity.
-- **⚡ Real‑time** updates via KNX telegram callbacks, and full **reboot/standby** survival.
+- **💡 Lights** - on/off, dimming, colour and colour-temperature (as defined in your project).
+- **🔌 Switches** - lights, sockets, and any on/off actuator.
+- **🪟 Covers** - blinds/shutters with open/close/stop and position/tilt.
+- **🌡️ Climate** - KNX room thermostats (current + target temperature, on/off, heat/cool).
+- **📊 Sensors** - temperature, humidity, power, energy, contacts/status - typed from the KNX datapoint type (DPT).
+- **🎬 Scenes** - all your KNX scenes in one Select entity.
+- **⚡ Real-time** updates via KNX telegram callbacks, and full **reboot/standby** survival.
 
-Built on [xknx](https://github.com/XKNX/xknx) and [xknxproject](https://github.com/XKNX/xknxproject) — the same libraries used by Home Assistant's KNX integration.
+Built on [xknx](https://github.com/XKNX/xknx) and [xknxproject](https://github.com/XKNX/xknxproject) - the same libraries used by Home Assistant's KNX integration.
 
 ---
 ## ❤️ Support Development ❤️
@@ -38,7 +41,7 @@ Your support helps maintain this integration. Thank you! ❤️
 
 ## Requirements
 
-- A **KNX/IP gateway** (interface or router — e.g. MDT, Weinzierl, Gira, ISE, Siemens) reachable on your network, with **tunneling** enabled.
+- A **KNX/IP gateway** (interface or router - e.g. MDT, Weinzierl, Gira, ISE, Siemens) reachable on your network, with **tunneling** enabled.
 - Your KNX entity information, in **one** of these forms (see [Configuration](#configuration)): an ETS **CSV** export, a Home Assistant **KNX YAML** block, or your ETS **`.knxproj`** file.
 - Unfolded Circle Remote 2 / 3 with firmware supporting custom integrations.
 
@@ -50,20 +53,39 @@ Your support helps maintain this integration. Thank you! ❤️
 2. Open your Remote's web interface (`http://your-remote-ip`).
 3. Go to **Settings → Integrations → Add Integration → Install Custom** and upload the `.tar.gz`.
 
-### Option 2: Docker (Advanced — required for the `.knxproj` file method)
+### Option 2: Docker (Advanced Users)
 
-```bash
-docker run -d --name uc-intg-knx --network host \
-  -v $(pwd)/config:/config \
-  -e UC_INTEGRATION_HTTP_PORT=9090 \
-  ghcr.io/mase1981/uc-intg-knx:latest
+The integration is available as a pre-built Docker image from GitHub Container Registry:
+
+**Image**: `ghcr.io/mase1981/uc-intg-knx:latest`
+
+**Docker Compose:**
+```yaml
+services:
+  uc-intg-knx:
+    image: ghcr.io/mase1981/uc-intg-knx:latest
+    container_name: uc-intg-knx
+    network_mode: host
+    volumes:
+      - ./config:/config
+    environment:
+      - UC_CONFIG_HOME=/config
+      - UC_INTEGRATION_HTTP_PORT=9090
+      - UC_INTEGRATION_INTERFACE=0.0.0.0
+      - PYTHONPATH=/app
+    restart: unless-stopped
 ```
 
-`--network host` is required so the container can reach your KNX/IP gateway. The mounted `./config` folder is also where you drop a `.knxproj` for the file import method.
+**Docker Run:**
+```bash
+docker run -d --name uc-intg-knx --restart unless-stopped --network host -v $(pwd)/config:/config -e UC_CONFIG_HOME=/config -e UC_INTEGRATION_INTERFACE=0.0.0.0 -e UC_INTEGRATION_HTTP_PORT=9090 -e PYTHONPATH=/app ghcr.io/mase1981/uc-intg-knx:latest
+```
+
+`--network host` lets the container reach your KNX/IP gateway. The mounted `config` folder is also where you place a `.knxproj` for the file import method.
 
 ## Configuration
 
-Setup asks for your **gateway IP** and a **configuration method**. Pick whichever fits you — all three produce the same native entities; they only differ in effort and grouping accuracy.
+Setup asks for your **gateway IP** and a **configuration method**. Pick whichever fits you - all three produce the same native entities; they only differ in effort and grouping accuracy.
 
 | Method | What you provide | Grouping | Works on Remote? |
 |---|---|---|---|
@@ -73,16 +95,16 @@ Setup asks for your **gateway IP** and a **configuration method**. Pick whicheve
 
 > Why three? UC's setup only supports text fields (no file upload), so binary `.knxproj` files can't be uploaded on the Remote. Pasting CSV or YAML works everywhere; `.knxproj` is offered for Docker users (mounted file) or anyone who can host it at a URL.
 
-### Method A — ETS CSV (easiest)
+### Method A - ETS CSV (easiest)
 
-1. In **ETS**: **Group Addresses** view → right‑click the top node → **Export Group Addresses…** → **CSV** (3‑level; include the **Datapoint Type** column for best results).
+1. In **ETS**: **Group Addresses** view → right-click the top node → **Export Group Addresses...** → **CSV** (3-level; include the **Datapoint Type** column for best results).
 2. Open the `.csv`, copy all, and paste it into the setup field.
 
 CSV is a flat list, so each address becomes its own entity (a dimmable light may appear as a separate switch + dimmer). For fully grouped entities, use YAML or `.knxproj`.
 
-### Method B — Home Assistant KNX YAML (most accurate paste)
+### Method B - Home Assistant KNX YAML (most accurate paste)
 
-If you already run Home Assistant with KNX, paste your existing `knx:` config — the exact same schema is understood, e.g.:
+If you already run Home Assistant with KNX, paste your existing `knx:` config - the exact same schema is understood, e.g.:
 
 ```yaml
 knx:
@@ -115,7 +137,7 @@ knx:
 
 Supported platforms: `light`, `switch`, `cover`, `climate`, `sensor`, `binary_sensor`, `scene`. The `knx:` wrapper is optional.
 
-### Method C — ETS `.knxproj` (richest, Docker/URL)
+### Method C - ETS `.knxproj` (richest, Docker/URL)
 
 Provides the best grouping because it reads your ETS **Functions**. Since it's a binary file it can't be pasted on the Remote:
 
@@ -126,7 +148,7 @@ Enter the project **password** if it's encrypted. Parsed with the `xknxproject` 
 
 ## Using the Integration
 
-After setup, your entities appear natively on the Remote — add them to pages and Activities like any other:
+After setup, your entities appear natively on the Remote - add them to pages and Activities like any other:
 
 - **Lights** with power + brightness (and colour where available)
 - **Covers** with open/close/stop and a position slider
@@ -141,7 +163,7 @@ After setup, your entities appear natively on the Remote — add them to pages a
 | "Nothing could be imported" | Check the pasted text (CSV needs an address column; YAML needs valid `knx:` platforms). |
 | Sensors show odd values | Export the ETS CSV **with the DPT column**, or use YAML/`.knxproj` so types are known. |
 | A dimmable light shows as two entities | Expected with CSV (flat). Use YAML or `.knxproj` for grouped entities. |
-| `.knxproj` "not found" | On the Remote there's no filesystem — use Docker with a mounted config folder, or provide a URL. |
+| `.knxproj` "not found" | On the Remote there's no filesystem - use Docker with a mounted config folder, or provide a URL. |
 | Cannot connect | Verify the gateway IP and that it has a free **tunneling** channel on your network. |
 
 ## Credits
@@ -152,7 +174,7 @@ After setup, your entities appear natively on the Remote — add them to pages a
 
 ## License
 
-Mozilla Public License 2.0 (MPL‑2.0) — see the LICENSE file.
+Mozilla Public License 2.0 (MPL-2.0) - see the LICENSE file.
 
 ## Support & Community
 
