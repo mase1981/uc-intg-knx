@@ -1,0 +1,39 @@
+{
+  "driver_id": "uc_intg_knx",
+  "version": "1.0.0",
+  "min_core_api": "0.22.0",
+  "name": {
+    "en": "KNX Hub"
+  },
+  "icon": "uc:home",
+  "description": {
+    "en": "Control a KNX smart-home installation through a KNX/IP gateway. Exposes user-defined switches, lights, covers, climate, sensors, and scene buttons."
+  },
+  "developer": {
+    "name": "Meir Miyara",
+    "email": "meir.miyara@gmail.com",
+    "url": "https://github.com/mase1981"
+  },
+  "home_page": "https://github.com/mase1981/uc-intg-knx",
+  "release_date": "2026-07-23",
+  "setup_data_schema": {
+    "title": {
+      "en": "KNX Hub Setup"
+    },
+    "settings": [
+      {
+        "id": "info",
+        "label": {
+          "en": "Connect to your KNX/IP Gateway"
+        },
+        "field": {
+          "label": {
+            "value": {
+              "en": "On the next screen, choose your connection type and enter your KNX/IP gateway details, then paste your entity definitions as a JSON array. See the integration README for the entity format and examples."
+            }
+          }
+        }
+      }
+    ]
+  }
+}
