@@ -51,6 +51,8 @@ jobs:
                 --collect-all ucapi \
                 --collect-all ucapi_framework \
                 --collect-all xknx \
+                --collect-all xknxproject \
+                --collect-all yaml \
                 --collect-all ifaddr \
                 uc_intg_knx/__init__.py"
 

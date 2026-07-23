@@ -7,7 +7,7 @@
   },
   "icon": "uc:home",
   "description": {
-    "en": "Control a KNX installation through a KNX/IP gateway. Enter the gateway IP and paste your ETS group-address export; the integration auto-builds a Remote, scene Selects, and Sensors."
+    "en": "Control a KNX installation through a KNX/IP gateway. Enter the gateway IP and import your entities (paste ETS CSV or Home Assistant KNX YAML, or point to an ETS .knxproj); the integration auto-builds native lights, switches, covers, climate, sensors, and scene selects."
   },
   "developer": {
     "name": "Meir Miyara",
