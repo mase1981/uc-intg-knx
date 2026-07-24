@@ -11,7 +11,7 @@ from typing import Any
 from ucapi_framework import ExternalClientDevice
 
 from uc_intg_knx.config import KnxConfig
-from uc_intg_knx.const import STATE_ON, STATE_UNAVAILABLE
+from uc_intg_knx.const import DEFAULT_KNX_PORT, STATE_ON, STATE_UNAVAILABLE
 from uc_intg_knx.knx_import import (
     TYPE_BINARY_SENSOR,
     TYPE_CLIMATE,
@@ -91,8 +91,15 @@ class KnxDevice(ExternalClientDevice):
             "connection_type": mapping.get(cfg.connection_type, ConnectionType.TUNNELING)
         }
         if cfg.host:
+            # UC setup returns all values as strings, and the framework's
+            # reconfigure path can store the port as a string. asyncio's
+            # sendto() requires an int, so coerce defensively here.
+            try:
+                port = int(cfg.port)
+            except (TypeError, ValueError):
+                port = DEFAULT_KNX_PORT
             kwargs["gateway_ip"] = cfg.host
-            kwargs["gateway_port"] = cfg.port
+            kwargs["gateway_port"] = port
         if cfg.local_ip:
             kwargs["local_ip"] = cfg.local_ip
         return ConnectionConfig(**kwargs)

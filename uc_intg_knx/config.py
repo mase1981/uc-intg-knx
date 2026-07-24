@@ -26,6 +26,13 @@ class KnxConfig:
     source: str = SOURCE_CSV
     entities: list[dict[str, Any]] = field(default_factory=list)
 
+    def __post_init__(self) -> None:
+        # Setup values arrive as strings; keep port numeric for the connection.
+        try:
+            self.port = int(self.port)
+        except (TypeError, ValueError):
+            self.port = DEFAULT_KNX_PORT
+
 
 class KnxConfigManager(BaseConfigManager[KnxConfig]):
     """Config manager bound to :class:`KnxConfig`."""
