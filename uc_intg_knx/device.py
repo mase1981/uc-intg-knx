@@ -23,6 +23,11 @@ from uc_intg_knx.knx_import import (
 
 _LOG = logging.getLogger(__name__)
 
+STARTUP_ATTEMPTS = 3  # the Remote's Wi-Fi may still be coming back after standby
+STARTUP_RETRY_DELAY = 5.0
+RETRY_MIN = 15.0
+RETRY_MAX = 300.0
+
 DEFAULT_MIN_KELVIN = 2700
 DEFAULT_MAX_KELVIN = 6500
 
@@ -48,6 +53,8 @@ class KnxDevice(ExternalClientDevice):
         self._devices: dict[int, Any] = {}
         self._connect_lock: asyncio.Lock = asyncio.Lock()
         self._state: str = STATE_UNAVAILABLE
+        self._wanted: bool = False
+        self._retry_task: asyncio.Task | None = None
 
     @property
     def identifier(self) -> str:
@@ -203,8 +210,36 @@ class KnxDevice(ExternalClientDevice):
 
     # ------------------------------------------------------------------
     async def connect(self) -> bool:
+        # The base class only starts its watchdog after a successful first connect,
+        # so a connect that fails while Wi-Fi is still coming back must be retried here.
+        self._wanted = True
+        for attempt in range(1, STARTUP_ATTEMPTS + 1):
+            if await self._connect_once():
+                return True
+            if attempt < STARTUP_ATTEMPTS:
+                await asyncio.sleep(STARTUP_RETRY_DELAY)
+                if not self._wanted:
+                    return False
+        if self._wanted and (self._retry_task is None or self._retry_task.done()):
+            self._retry_task = asyncio.create_task(self._retry_connect())
+        return False
+
+    async def _connect_once(self) -> bool:
         async with self._connect_lock:
+            if not self._wanted:
+                return False
             return await super().connect()
+
+    async def _retry_connect(self) -> None:
+        delay = RETRY_MIN
+        while self._wanted:
+            await asyncio.sleep(delay)
+            if not self._wanted:
+                return
+            if await self._connect_once():
+                _LOG.info("[%s] Reconnected after retry", self.log_id)
+                return
+            delay = min(delay * 2, RETRY_MAX)
 
     async def create_client(self) -> Any:
         from xknx import XKNX
@@ -221,7 +256,11 @@ class KnxDevice(ExternalClientDevice):
         return self._xknx
 
     async def connect_client(self) -> None:
-        await self._xknx.start()
+        try:
+            await self._xknx.start()
+        except Exception:
+            await self._teardown_xknx()
+            raise
         self._state = STATE_ON
         self._loop.create_task(self._initial_sync())
 
@@ -246,8 +285,17 @@ class KnxDevice(ExternalClientDevice):
         return self._xknx.connection_manager.state == XknxConnectionState.CONNECTED
 
     async def disconnect(self) -> None:
+        self._wanted = False
+        task, self._retry_task = self._retry_task, None
+        if task is not None and not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
         async with self._connect_lock:
             await super().disconnect()
+            await self._teardown_xknx()
         self._state = STATE_UNAVAILABLE
 
     # ------------------------------------------------------------------

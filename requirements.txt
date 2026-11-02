@@ -1,6 +1,6 @@
 ucapi>=0.7.0
 ucapi-framework>=1.9.5
-xknx>=3.6.0
+xknx>=3.6.0,<4
 xknxproject>=3.7.0
 pyyaml>=6.0
 aiohttp>=3.9.0
